@@ -6,9 +6,15 @@ Created on 4 wrz 2013
 @author: kowald
 '''
 
+MANGA_TITLE = 'naruto'
+MANGA_CHAPTER = 600
+TEMP_DIR = '/tmp/nar'
+
 import sys
+import os
 import re
 import urllib
+import urlparse
 import HTMLParser
 
 
@@ -50,8 +56,8 @@ def dummy_log(s):
 class GetFirstPageHTMLParser(HTMLParser.HTMLParser):
     def __init__(self, chapter_number=0):
         HTMLParser.HTMLParser.__init__(self)
-        self.__link_re = re.compile('.*\D{0}\D.*\.html'.format(chapter_number), \
-                                  re.IGNORECASE)
+        self.__link_re = re.compile( \
+            '.*\D0*{0}/\d*\.html'.format(chapter_number), re.IGNORECASE)
         self.__title_re = re.compile('.*\s{0}$'.format(chapter_number), \
                                    re.IGNORECASE)
         #print self.__link_re.pattern
@@ -91,8 +97,8 @@ class GetFirstPageHTMLParser(HTMLParser.HTMLParser):
             if (self.__link_re.match(self.__temp_link) and
                 self.__title_re.match(data)):
                 self.link = self.__temp_link
-                self.log_func( \
-                    'Found: {0} - {1}\n'.format(data, self.__temp_link))
+                #self.log_func( \
+                print(    'Found: {0} - {1}\n'.format(data, self.__temp_link))
 
     def handle_endtag(self, tag):
         if (tag == 'a' and self.__temp_link):
@@ -146,16 +152,38 @@ class GetPicAndNextPageHTMLParser(HTMLParser.HTMLParser):
 
 
 if __name__ == '__main__':
-    parser = GetFirstPageHTMLParser(0)
-    #parser = PrintAllHTMLParser()
-    #parser.log_func = sys.stdout.write
-    chaplist = urllib.urlopen('http://mangafox.me/manga/naruto')
-    parser.feed(chaplist.read())
-    print '\nChapter link: {0}'.format(parser.link)
-    
-    '''parser = GetPicAndNextPageHTMLParser()
-    parser.log_func = sys.stdout.write
-    url = "http://mangafox.me/manga/naruto/v51/c479/11.html"
-    parser.feed(urllib.urlopen(url).read())
-    print '\nnext page: {0}\npicture: {1}'.format(parser.link, parser.pic)
-    '''
+    main_page = 'http://mangafox.me/manga/{0}'.format(MANGA_TITLE)
+    print 'Connecting to main page: {0} to search for chapter: {1}'.format(main_page, MANGA_CHAPTER)
+    page = urllib.urlopen(main_page)
+    first_page_parser = GetFirstPageHTMLParser(MANGA_CHAPTER)
+    #first_page_parser.log_func = sys.stdout.write
+    first_page_parser.feed(page.read())
+    if (not first_page_parser.link):
+        print 'First page not found'
+        exit(1)
+
+    page_parser = GetPicAndNextPageHTMLParser()
+    page_url = first_page_parser.link
+    page_prefix = page_url[:str(page_url).rfind('/') + 1]
+    #print page_prefix
+    while page_url:
+        print ('Connecting to url: {0}'.format(page_url))
+        page_parser.feed(urllib.urlopen(page_url).read())
+        if page_parser.pic:
+            pic_url = page_parser.pic
+            print '  Downloading picture...'
+            print '  Picture url: {0}'.format(pic_url)
+            picture = urllib.urlopen(pic_url).read()
+            f = open(pic_url[str(pic_url).rfind('/') + 1:], 'wb')
+            f.write(picture)
+            f.close()
+        if not page_parser.link:
+            print 'Link to next page not found - STOP'
+            exit(1)
+        if ((page_parser.link.find('.html') < 0) or
+        page_parser.link == 'javascript:void(0);'):
+            page_url = None
+        else:
+            page_url = '{0}{1}'.format(page_prefix, page_parser.link)
+
+    print 'Making PDF file'
